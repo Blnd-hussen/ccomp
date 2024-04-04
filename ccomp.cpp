@@ -6,8 +6,13 @@
 #include <string>
 #include <vector>
 
-std::vector<std::string> getIncludePaths(std::string filePath);
-std::string suffixCpp(std::string str);
+// Function to extract include paths from a C++ source file
+std::vector<std::string> ExtractIncludePaths(std::string &filePath);
+
+// Function to check if a file exists
+bool FileExists(const std::string &filePath);
+
+std::string suffixCpp(std::string &str);
 
 int main(int argc, char **argv)
 {
@@ -30,26 +35,26 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  std::string baseFile{};
-  std::string outputPath = "./out";
-  bool run = false;
+  std::string sourcePath{};
+  std::string outputDirectory = "./out";
+  bool runBinary = false;
 
   std::regex re("^.+\\.cpp$");
   for (int i = 1; i < argc; ++i)
   {
-    std::string arg{argv[i]};
-    if (std::regex_match(arg, re) && baseFile.empty())
+    std::string currentArg{argv[i]};
+    if (std::regex_match(currentArg, re) && sourcePath.empty())
     {
-      baseFile = arg;
+      sourcePath = currentArg;
     }
 
-    if (arg == "-r") run = true;
+    if (currentArg == "-r") runBinary = true;
 
-    if (arg == "-o") outputPath = argv[i + 1];
+    if (currentArg == "-o") outputDirectory = argv[i + 1];
   }
 
   // base file was not provided
-  if (baseFile.empty())
+  if (sourcePath.empty())
   {
     std::cout << "\033[38;5;160mProcess terminated -- exit code 2\n";
     std::cout << "\033[38;5;95m-- C++ file was not provided\033[0m\n";
@@ -57,19 +62,19 @@ int main(int argc, char **argv)
     return 2;
   }
 
-  if (outputPath == "./out" && !std::filesystem::exists(outputPath))
-    std::filesystem::create_directory(outputPath);
+  if (outputDirectory == "./out" && !FileExists(outputDirectory))
+    std::filesystem::create_directory(outputDirectory);
 
   // construct the base system command
-  std::string baseFileName = baseFile.substr(0, baseFile.find_last_of('.'));
+  std::string sourceFilename = sourcePath.substr(0, sourcePath.find_last_of('.'));
   std::string command =
-      "g++ " + baseFile + " -o " + outputPath + "/" + baseFileName + " ";
+          "g++ " + sourcePath + " -o " + outputDirectory + "/" + sourceFilename + " ";
 
   // get -ld files from the base file
   std::vector<std::string> includePaths;
   try
   {
-    includePaths = getIncludePaths(baseFile);
+    includePaths = ExtractIncludePaths(sourcePath);
   }
   catch (const std::exception &e)
   {
@@ -88,8 +93,8 @@ int main(int argc, char **argv)
   }
 
   // if run is true
-  if (run)
-    command += "&& " + outputPath + "/" + baseFileName;
+  if (runBinary)
+    command += "&& " + outputDirectory + "/" + sourceFilename;
 
   int result = system(command.c_str());
   if (result != 0)
@@ -101,14 +106,18 @@ int main(int argc, char **argv)
   return 0;
 }
 
-std::string suffixCpp(std::string str)
+std::string suffixCpp(std::string &str)
 {
   std::string res = str.substr(0, str.find_last_of('.'));
-
   return res + ".cpp";
 }
 
-std::vector<std::string> getIncludePaths(std::string filePath)
+bool FileExists(const std::string &filePath)
+{
+  return std::filesystem::exists(filePath);
+}
+
+std::vector<std::string> ExtractIncludePaths(std::string &filePath)
 {
   // if the file was not found
   std::ifstream file(filePath);
