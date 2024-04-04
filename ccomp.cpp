@@ -12,7 +12,7 @@ std::vector<std::string> ExtractIncludePaths(std::string &filePath);
 // Function to check if a file exists
 bool FileExists(const std::string &filePath);
 
-std::string suffixCpp(std::string &str);
+std::string suffixCpp(const std::string &str);
 
 int main(int argc, char **argv)
 {
@@ -106,7 +106,7 @@ int main(int argc, char **argv)
   return 0;
 }
 
-std::string suffixCpp(std::string &str)
+std::string suffixCpp(const std::string &str)
 {
   std::string res = str.substr(0, str.find_last_of('.'));
   return res + ".cpp";
