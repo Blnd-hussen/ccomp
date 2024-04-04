@@ -54,10 +54,12 @@ int main(int argc, char **argv)
   }
 
   // base file was not provided
-  if (sourcePath.empty())
+  if (sourcePath.empty() || !FileExists(sourcePath))
   {
-    std::cout << "\033[38;5;160mProcess terminated -- exit code 2\n";
-    std::cout << "\033[38;5;95m-- C++ file was not provided\033[0m\n";
+    std::cout << "\033[38;5;160mProcess terminated -- exit code 2\033[0m\n";
+    std::cout << "-- Possible Causes:\n";
+    std::cout << "\033[38;5;95m-- source file was not provided\n";
+    std::cout << "-- source file does not exist\033[0m\n";
 
     return 2;
   }
@@ -80,9 +82,8 @@ int main(int argc, char **argv)
   {
     std::cerr << "\033[38;5;160m" << e.what() << "\033[0m\n";
     std::cout << "-- Possible Causes:\n\033[38;5;95m";
-    std::cout << "-- File might not exist\n";
     std::cout << "-- File might not be readable\n";
-    std::cout << "-- File might not be a valid c++ file\033[0m\n";
+    std::cout << "-- File might not exist\033[0m\n";
 
     return 3;
   }
