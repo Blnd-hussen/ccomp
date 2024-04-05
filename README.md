@@ -6,11 +6,10 @@ CCOMP is a command-line utility designed to automate the compilation and executi
 
 - Automatic include path extraction from the source file
 - Optional execution of the compiled binary
-  Usage:
 
 ## Usage
 
-The program expects at least one argument, which should be the path to a C++ file. Optionally, you can specify additional arguments to control the behavior:
+The program expects at least one argument, which should be the path to a C++ file. Optionally, you can specify additional arguments to control the behaviour:
 
 ```bash
 ccomp [options] <source_file>
