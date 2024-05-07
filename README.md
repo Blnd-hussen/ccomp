@@ -5,6 +5,7 @@ CCOMP is a command-line utility designed to automate the compilation and executi
 ## Features
 
 - Automatic include path extraction from the source file
+- Optional execution of the compiled binary with valgrind
 - Optional execution of the compiled binary
 
 ## Usage
@@ -15,6 +16,7 @@ The program expects at least one argument, which should be the path to a C++ fil
 ccomp [options] <source_file>
 
 Options:
+  -rv, --valgrind     Run the compiled program using Valgrind memory debugger after successful compilation (off by default).
   -r,  --run          Executes the compiled binary after successful compilation (default: off)
   -o,  --output       Specifies the output directory for the compiled binary (default: ./out)
 ```
@@ -25,6 +27,12 @@ Compile `file.cpp` and run the resulting binary:
 
 ```bash
 ccomp -r file.cpp
+```
+
+Compile `file.cpp` and run the resulting binary under valgrind:
+
+```bash
+ccomp -rv file.cpp
 ```
 
 Compile file.cpp with a custom output directory:
@@ -49,6 +57,7 @@ ccomp -r file.cpp -o /build
 
 - Unix-like operating system
 - GNU Compiler Collection (g++) installed
+- [Optional] valgrind installed
 
 ## How it Works
 
@@ -63,3 +72,5 @@ ccomp -r file.cpp -o /build
 5. The compilation is performed, and the exit code is checked for success.
 
 6. If the -r flag is provided and compilation is successful, the program executes the compiled binary.
+
+7. If the -rv flag is provided and compilation is successful, the program executes the compiled binary under valgrind.

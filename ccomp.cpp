@@ -38,6 +38,7 @@ int main(int argc, char **argv)
   std::string sourcePath{};
   std::string outputDirectory = "./out";
   bool runBinary = false;
+  bool runValgrind = false;
 
   std::regex re("^.+\\.cpp$");
   for (int i = 1; i < argc; ++i)
@@ -49,6 +50,8 @@ int main(int argc, char **argv)
     }
 
     if (currentArg == "-r") runBinary = true;
+
+    if (currentArg == "-rv") runValgrind = true;
 
     if (currentArg == "-o") outputDirectory = argv[i + 1];
   }
@@ -94,9 +97,12 @@ int main(int argc, char **argv)
   }
 
   // if run is true
-  if (runBinary)
-    command += "&& " + outputDirectory + "/" + sourceFilename;
+  if (runBinary && runValgrind)
+    command += "&& valgrind ./" + outputDirectory + "/" + sourceFilename;
+  else if (runBinary)
+    command += "&& ./" + outputDirectory + "/" + sourceFilename;
 
+  // check for success
   int result = system(command.c_str());
   if (result != 0)
   {
