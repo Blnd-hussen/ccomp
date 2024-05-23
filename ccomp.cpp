@@ -97,10 +97,13 @@ int main(int argc, char **argv)
   }
 
   // if run is true
-  if (runBinary && runValgrind)
-    command += "&& valgrind ./" + outputDirectory + "/" + sourceFilename;
-  else if (runBinary)
-    command += "&& ./" + outputDirectory + "/" + sourceFilename;
+  if (runValgrind || runBinary)
+  {
+    if (runValgrind)
+      command += "&& valgrind " + outputDirectory + "/" + sourceFilename;
+    else
+      command += "&& " + outputDirectory + "/" + sourceFilename;
+  }
 
   // check for success
   int result = system(command.c_str());
