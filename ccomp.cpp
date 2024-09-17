@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 
   if (argc < 2)
   {
-    std::cout << "\033[38;5;160mInvalid Usage -- exit code 1\033[0m\n";
+    std::cout << "\033[38;5;160mCCOMP\033[0m\n";
     std::cout << "\033[38;5;95m-- The program expects at least one argument, "
                  "which should be the path to a C++ file.\n  Optionally, you "
                  "can specify additional flags to control the behavior:\n\n";
