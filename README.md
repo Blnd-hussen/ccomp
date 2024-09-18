@@ -18,7 +18,7 @@ The program expects at least one argument, which should be the path to a C++ fil
 ccomp [options] <source_file>
 
 Options:
-  -c, --compiler      Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is clang++ -std=c++20.
+  -c,  --compiler      Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is clang++ -std=c++20.
   -rv, --valgrind     Run the compiled program using Valgrind memory debugger after successful compilation (off by default).
   -r,  --run          Executes the compiled binary after successful compilation (default: off)
   -o,  --output       Specifies the output directory for the compiled binary (default: ./out)
@@ -84,7 +84,7 @@ ccomp -rv file.cpp -o build -c clang-17
 
 7. If the -rv flag is provided and compilation is successful, the program executes the compiled binary under valgrind.
 
-8. If a compiler/compiler-version is specifies using the -c, the program will match the argument against the following regex:
+8. If a compiler/compiler-version is specifies using the -c flag, the program will match the argument against the following regex:
 
 ```regex
 ^(gnu|clang)-[0-9]{2}$
