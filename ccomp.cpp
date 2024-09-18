@@ -14,9 +14,12 @@ bool FileExists(const std::string &filePath);
 
 std::string suffixCpp(const std::string &str);
 
+std::string evaluatePrefferedCompiler(const std::string &compiler = "");
+
+std::vector<std::string> splitString(const std::string &str, char delimiter);
+
 int main(int argc, char **argv)
 {
-
   if (argc < 2)
   {
     std::cout << "\033[38;5;160mCCOMP\033[0m\n";
@@ -24,11 +27,11 @@ int main(int argc, char **argv)
                  "which should be the path to a C++ file.\n  Optionally, you "
                  "can specify additional flags to control the behavior:\n\n";
 
-    std::cout << "-- Flag: '-r' Runs the compiled binary after successful "
-                 "compilation\n\n";
+    std::cout << "-- Flag: '-r' Runs the compiled binary after successful compilation\n\n";
 
-    std::cout << "-- Flag: '-o' [output_path]: Specifies the output directory "
-                 "for the compiled binary. Default is './out'\n\n";
+    std::cout << "-- Flag: '-c' Compiles using the Gnu C++ Compiler (g++)\n\n";
+
+    std::cout << "-- Flag: '-o' [output_path]: Specifies the output directory for the compiled binary. Default is './out'\n\n";
 
     std::cout << "-- Example usage: ccomp -r file.cpp -o /build\033[0m\n\n";
 
@@ -37,6 +40,7 @@ int main(int argc, char **argv)
 
   std::string sourcePath{};
   std::string outputDirectory = "./out";
+  std::string preferredCompiler = evaluatePrefferedCompiler();
   bool runBinary = false;
   bool runValgrind = false;
 
@@ -50,10 +54,10 @@ int main(int argc, char **argv)
     }
 
     if (currentArg == "-r") runBinary = true;
-
-    if (currentArg == "-rv") runValgrind = true;
-
-    if (currentArg == "-o") outputDirectory = argv[i + 1];
+    else if (currentArg == "-rv") runValgrind = true;
+    else if (currentArg == "-c") preferredCompiler = evaluatePrefferedCompiler(argv[i + 1]);
+    else if (currentArg == "-o") outputDirectory = argv[i + 1];
+    else continue;
   }
 
   // base file was not provided
@@ -72,8 +76,16 @@ int main(int argc, char **argv)
 
   // construct the base system command
   std::string sourceFilename = sourcePath.substr(0, sourcePath.find_last_of('.'));
-  std::string command =
-          "g++ " + sourcePath + " -o " + outputDirectory + "/" + sourceFilename + " ";
+  std::string command = (
+    preferredCompiler 
+    + " " 
+    + sourcePath 
+    + " -o " 
+    + outputDirectory 
+    + "/" 
+    + sourceFilename 
+    + " "
+  );
 
   // get -ld files from the base file
   std::vector<std::string> includePaths;
@@ -104,6 +116,7 @@ int main(int argc, char **argv)
     else
       command += "&& " + outputDirectory + "/" + sourceFilename;
   }
+
 
   // check for success
   int result = system(command.c_str());
@@ -145,10 +158,40 @@ std::vector<std::string> ExtractIncludePaths(std::string &filePath)
     if (std::regex_match(line, match, re))
       matches.push_back(suffixCpp(match[1].str()));
 
-    if (line.find("int main") != std::string::npos)
-      break;
+    if (line.find("int main") != std::string::npos) break;
   }
   file.close();
 
   return matches;
+}
+
+std::string evaluatePrefferedCompiler(const std::string &compiler)
+{
+  std::regex re("^(gnu|clang)-[0-9]{2}$");
+  if (!std::regex_match(compiler, re))
+    return "clang++ -std=c++20";
+
+  auto tokens = splitString(compiler, '-');
+  if (tokens.size() != 2)
+    return "clang++ -std=c++20";
+
+  if (tokens[0] == "gnu")
+  {
+    return "g++-" + tokens[1];
+  }
+  return "clang++ -std=c++" + tokens[1];
+}
+
+std::vector<std::string> splitString(const std::string &str, char delimiter)
+{
+  std::vector<std::string> result;
+  std::stringstream ss(str);
+  std::string token;
+
+  while (std::getline(ss, token, delimiter))
+  {
+    result.push_back(token);
+  }
+
+  return result;
 }
