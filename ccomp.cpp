@@ -29,7 +29,7 @@ int main(int argc, char **argv)
 
     std::cout << "-- Flag: '-r' Runs the compiled binary after successful compilation\n\n";
 
-    std::cout << "-- Flag: '-c' Compiles using the Gnu C++ Compiler (g++)\n\n";
+    std::cout << "-- Flag: '-c' specify compiler/compiler-version eg. ccomp -c gnu-17\n\n";
 
     std::cout << "-- Flag: '-o' [output_path]: Specifies the output directory for the compiled binary. Default is './out'\n\n";
 
