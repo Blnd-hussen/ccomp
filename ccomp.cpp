@@ -6,17 +6,23 @@
 #include <string>
 #include <vector>
 
+// regex definations
+const std::regex COMPILER_REGEX("^(gnu|clang)-[0-9]{2}$");
+const std::regex SOURCEPATH_REGEX("^.+\\.cpp$");
+
 // Function to extract include paths from a C++ source file
-std::vector<std::string> ExtractIncludePaths(std::string &filePath);
+std::vector<std::string> ExtractIncludePaths(const std::filesystem::path &filePath);
+
+// Function to split string based on delimiter
+std::vector<std::string> splitString(const std::string &str, char delimiter);
+
+// Function to check if correct compiler and version is specified
+std::string evaluatePreferredCompiler(const std::string &compiler = "");
 
 // Function to check if a file exists
-bool FileExists(const std::string &filePath);
+bool FileExists(const std::filesystem::path &filePath);
 
 std::string suffixCpp(const std::string &str);
-
-std::string evaluatePrefferedCompiler(const std::string &compiler = "");
-
-std::vector<std::string> splitString(const std::string &str, char delimiter);
 
 int main(int argc, char **argv)
 {
@@ -38,26 +44,66 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  std::string sourcePath{};
-  std::string outputDirectory = "./out";
-  std::string preferredCompiler = evaluatePrefferedCompiler();
+  std::filesystem::path sourcePath{};
+  std::filesystem::path outputPath = "./out";
+  std::string preferredCompiler = evaluatePreferredCompiler();
   bool runBinary = false;
   bool runValgrind = false;
 
-  std::regex re("^.+\\.cpp$");
+  bool skipArgument = false;
   for (int i = 1; i < argc; ++i)
   {
+    if (skipArgument)
+    {
+      skipArgument = false;
+      continue;
+    }
+
     std::string currentArg{argv[i]};
-    if (std::regex_match(currentArg, re) && sourcePath.empty())
+
+    if (std::regex_match(currentArg, SOURCEPATH_REGEX) && sourcePath.empty())
     {
       sourcePath = currentArg;
     }
-
-    if (currentArg == "-r") runBinary = true;
-    else if (currentArg == "-rv") runValgrind = true;
-    else if (currentArg == "-c") preferredCompiler = evaluatePrefferedCompiler(argv[i + 1]);
-    else if (currentArg == "-o") outputDirectory = argv[i + 1];
-    else continue;
+    else if (currentArg == "-r")
+    {
+      runBinary = true;
+    }
+    else if (currentArg == "-rv")
+    {
+      runValgrind = true;
+    }
+    else if (currentArg == "-c")
+    {
+      if (i + 1 < argc && std::regex_match(argv[i + 1], COMPILER_REGEX))
+      {
+        preferredCompiler = evaluatePreferredCompiler(argv[i + 1]);
+        skipArgument = true;
+      }
+      else
+      {
+        std::cerr << "Error: Compiler flag -c requires a valid compiler as the next argument.\n";
+        return 4;
+      }
+    }
+    else if (currentArg == "-o")
+    {
+      if (i + 1 < argc)
+      {
+        outputPath = argv[i + 1];
+        skipArgument = true;
+      }
+      else
+      {
+        std::cerr << "Error: Output flag -o requires a valid output directory path as the next argument.\n";
+        return 4;
+      }
+    }
+    else
+    {
+      std::cout << "Error: Invalid argument or flag: " << currentArg << '\n';
+      return 4;
+    }
   }
 
   // base file was not provided
@@ -71,21 +117,18 @@ int main(int argc, char **argv)
     return 2;
   }
 
-  if (outputDirectory == "./out" && !FileExists(outputDirectory))
-    std::filesystem::create_directory(outputDirectory);
+  // extract source file name
+  std::string sourceFileName = sourcePath.string().substr(0, sourcePath.string().find_last_of('.'));
+
+  // check if output directory exists
+  if (outputPath == "./out" && !FileExists(outputPath))
+  {
+    std::filesystem::create_directory(outputPath);
+    std::cout << "Output directory created. binary can be found at " << outputPath.string() << "/" << sourceFileName << '\n';
+  }
 
   // construct the base system command
-  std::string sourceFilename = sourcePath.substr(0, sourcePath.find_last_of('.'));
-  std::string command = (
-    preferredCompiler 
-    + " " 
-    + sourcePath 
-    + " -o " 
-    + outputDirectory 
-    + "/" 
-    + sourceFilename 
-    + " "
-  );
+  std::string command = (preferredCompiler + " " + sourcePath.string() + " -o " + outputPath.string() + "/" + sourceFileName + " ");
 
   // get -ld files from the base file
   std::vector<std::string> includePaths;
@@ -111,12 +154,13 @@ int main(int argc, char **argv)
   // if run is true
   if (runValgrind || runBinary)
   {
+    command += " && ";
     if (runValgrind)
-      command += "&& valgrind " + outputDirectory + "/" + sourceFilename;
-    else
-      command += "&& " + outputDirectory + "/" + sourceFilename;
+    {
+      command += "valgrind ";
+    }
+    command += outputPath.string() + "/" + sourceFileName;
   }
-
 
   // check for success
   int result = system(command.c_str());
@@ -129,23 +173,12 @@ int main(int argc, char **argv)
   return 0;
 }
 
-std::string suffixCpp(const std::string &str)
-{
-  std::string res = str.substr(0, str.find_last_of('.'));
-  return res + ".cpp";
-}
-
-bool FileExists(const std::string &filePath)
-{
-  return std::filesystem::exists(filePath);
-}
-
-std::vector<std::string> ExtractIncludePaths(std::string &filePath)
+std::vector<std::string> ExtractIncludePaths(const std::filesystem::path &filePath)
 {
   // if the file was not found
   std::ifstream file(filePath);
   if (!file.is_open())
-    throw std::runtime_error(filePath + " could not be processed");
+    throw std::runtime_error(filePath.string() + " could not be processed");
 
   // a list to hold the include paths
   std::vector<std::string> matches;
@@ -158,28 +191,12 @@ std::vector<std::string> ExtractIncludePaths(std::string &filePath)
     if (std::regex_match(line, match, re))
       matches.push_back(suffixCpp(match[1].str()));
 
-    if (line.find("int main") != std::string::npos) break;
+    if (line.find("int main") != std::string::npos)
+      break;
   }
   file.close();
 
   return matches;
-}
-
-std::string evaluatePrefferedCompiler(const std::string &compiler)
-{
-  std::regex re("^(gnu|clang)-[0-9]{2}$");
-  if (!std::regex_match(compiler, re))
-    return "clang++ -std=c++20";
-
-  auto tokens = splitString(compiler, '-');
-  if (tokens.size() != 2)
-    return "clang++ -std=c++20";
-
-  if (tokens[0] == "gnu")
-  {
-    return "g++-" + tokens[1];
-  }
-  return "clang++ -std=c++" + tokens[1];
 }
 
 std::vector<std::string> splitString(const std::string &str, char delimiter)
@@ -194,4 +211,31 @@ std::vector<std::string> splitString(const std::string &str, char delimiter)
   }
 
   return result;
+}
+
+std::string evaluatePreferredCompiler(const std::string &compiler)
+{
+  if (!std::regex_match(compiler, COMPILER_REGEX))
+    return "clang++ -std=c++20";
+
+  auto tokens = splitString(compiler, '-');
+  if (tokens.size() != 2)
+    return "clang++ -std=c++20";
+
+  if (tokens[0] == "gnu")
+  {
+    return "g++-" + tokens[1];
+  }
+  return "clang++ -std=c++" + tokens[1];
+}
+
+bool FileExists(const std::filesystem::path &filePath)
+{
+  return std::filesystem::exists(filePath);
+}
+
+std::string suffixCpp(const std::string &str)
+{
+  std::string res = str.substr(0, str.find_last_of('.'));
+  return res + ".cpp";
 }
