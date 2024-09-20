@@ -1,51 +1,15 @@
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <regex>
-#include <string>
-#include <vector>
-
-// regex definations
-const std::regex COMPILER_REGEX("^(gnu|clang)-[0-9]{2}$");
-const std::regex SOURCEPATH_REGEX("^.+\\.cpp$");
-
-// Function to extract include paths from a C++ source file
-std::vector<std::string> ExtractIncludePaths(const std::filesystem::path &filePath);
-
-// Function to split string based on delimiter
-std::vector<std::string> splitString(const std::string &str, char delimiter);
-
-// Function to check if correct compiler and version is specified
-std::string evaluatePreferredCompiler(const std::string &compiler = "");
-
-// Function to check if a file exists
-bool FileExists(const std::filesystem::path &filePath);
-
-std::string suffixCpp(const std::string &str);
+#include "./ccomp.hpp"
 
 int main(int argc, char **argv)
 {
   if (argc < 2)
   {
     std::cout << "\033[38;5;160mCCOMP\033[0m\n";
-    std::cout << "\033[38;5;95m-- The program expects at least one argument, "
-                 "which should be the path to a C++ file.\n  Optionally, you "
-                 "can specify additional flags to control the behavior:\n\n";
-
-    std::cout << "-- Flag: '-r' Runs the compiled binary after successful compilation\n\n";
-
-    std::cout << "-- Flag: '-c' specify compiler/compiler-version eg. ccomp -c gnu-17\n\n";
-
-    std::cout << "-- Flag: '-o' [output_path]: Specifies the output directory for the compiled binary. Default is './out'\n\n";
-
-    std::cout << "-- Example usage: ccomp -r file.cpp -o /build\033[0m\n\n";
-
-    return 1;
+    return 0;
   }
 
-  std::filesystem::path sourcePath{};
-  std::filesystem::path outputPath = "./out";
+  fs::path sourcePath{};
+  fs::path outputPath = "./out";
   std::string preferredCompiler = evaluatePreferredCompiler();
   bool runBinary = false;
   bool runValgrind = false;
@@ -106,8 +70,8 @@ int main(int argc, char **argv)
     }
   }
 
-  // base file was not provided
-  if (sourcePath.empty() || !FileExists(sourcePath))
+  // base file was not provided or is empty
+  if (sourcePath.empty() || !fs::exists(sourcePath))
   {
     std::cout << "\033[38;5;160mProcess terminated -- exit code 2\033[0m\n";
     std::cout << "-- Possible Causes:\n";
@@ -121,17 +85,37 @@ int main(int argc, char **argv)
   std::string sourceFileName = sourcePath.string().substr(0, sourcePath.string().find_last_of('.'));
 
   // check if output directory exists
-  if (outputPath == "./out" && !FileExists(outputPath))
+  if (!fs::is_directory(outputPath))
   {
-    std::filesystem::create_directory(outputPath);
-    std::cout << "Output directory created. binary can be found at " << outputPath.string() << "/" << sourceFileName << '\n';
+    while (true)
+    {
+      std::cout << "Create output directory " + outputPath.string() + "/ [y,n]: ";
+      std::string input;
+      std::getline(std::cin, input);
+
+      if (input == "y" || input == "Y")
+      {
+        fs::create_directory(outputPath);
+        std::cout << "Output directory created. Binary can be found at " << outputPath.string() << "/" << sourceFileName << '\n';
+        break;
+      }
+      else if (input == "n" || input == "N")
+      {
+        std::cerr << "Error: Operation aborted by user.\n";
+        return 3;
+      }
+      else
+      {
+        std::cout << "Invalid input. Please enter 'y' or 'n'.\n";
+      }
+    }
   }
 
   // construct the base system command
   std::string command = (preferredCompiler + " " + sourcePath.string() + " -o " + outputPath.string() + "/" + sourceFileName + " ");
 
   // get -ld files from the base file
-  std::vector<std::string> includePaths;
+  std::vector<fs::path> includePaths;
   try
   {
     includePaths = ExtractIncludePaths(sourcePath);
@@ -146,53 +130,63 @@ int main(int argc, char **argv)
     return 3;
   }
 
-  for (std::string &path : includePaths)
+  for (const fs::path &path : includePaths)
   {
-    command += (path + " ");
+    if (path.filename() != sourcePath)
+      command += (path.string() + " ");
+  }
+
+  std::cout << command << '\n';
+
+  // check for successfull compilation
+  if (system(command.c_str()) != 0)
+  {
+    std::cout << "Compilation failed with error code: \n";
+    return 3;
   }
 
   // if run is true
-  if (runValgrind || runBinary)
+  if (runBinary || runValgrind)
   {
-    command += " && ";
+    std::string runCommand;
     if (runValgrind)
     {
-      command += "valgrind ";
+      runCommand = "valgrind " + outputPath.string() + "/" + sourceFileName;
     }
-    command += outputPath.string() + "/" + sourceFileName;
-  }
+    else
+    {
+      runCommand = outputPath.string() + "/" + sourceFileName;
+    }
 
-  // check for success
-  int result = system(command.c_str());
-  if (result != 0)
-  {
-    std::cout << "Compilation failed with error code: " << result << std::endl;
-    return 3;
+    int result = system(runCommand.c_str());
+    if (result != 0)
+    {
+      std::cerr << "Execution failed. -- exit code: " << result << std::endl;
+      return result;
+    }
   }
 
   return 0;
 }
 
-std::vector<std::string> ExtractIncludePaths(const std::filesystem::path &filePath)
+std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath)
 {
-  // if the file was not found
+  // check if file is readable
   std::ifstream file(filePath);
   if (!file.is_open())
     throw std::runtime_error(filePath.string() + " could not be processed");
 
   // a list to hold the include paths
-  std::vector<std::string> matches;
+  std::vector<fs::path> matches;
   std::smatch match{};
 
   std::string line{};
-  std::regex re("^#include \"(.+)\"$");
   while (std::getline(file, line))
   {
-    if (std::regex_match(line, match, re))
+    if (std::regex_match(line, match, HEADER_REGEX))
+    {
       matches.push_back(suffixCpp(match[1].str()));
-
-    if (line.find("int main") != std::string::npos)
-      break;
+    }
   }
   file.close();
 
@@ -215,23 +209,24 @@ std::vector<std::string> splitString(const std::string &str, char delimiter)
 
 std::string evaluatePreferredCompiler(const std::string &compiler)
 {
-  if (!std::regex_match(compiler, COMPILER_REGEX))
+
+  if (compiler.empty())
+  {
     return "clang++ -std=c++20";
+  }
 
   auto tokens = splitString(compiler, '-');
+
   if (tokens.size() != 2)
+  {
     return "clang++ -std=c++20";
+  }
 
   if (tokens[0] == "gnu")
   {
     return "g++-" + tokens[1];
   }
   return "clang++ -std=c++" + tokens[1];
-}
-
-bool FileExists(const std::filesystem::path &filePath)
-{
-  return std::filesystem::exists(filePath);
 }
 
 std::string suffixCpp(const std::string &str)
