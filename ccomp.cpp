@@ -1,78 +1,62 @@
 #include "./ccomp.hpp"
 
-int main(int argc, char **argv)
-{
-  if (argc < 2)
-  {
-    std::cout << "\033[38;5;160mCCOMP\033[0m\n";
+int main(int argc, char **argv) {
+  if (argc < 2) {
+    std::cout << "CCOMP\n";
     return 0;
   }
 
+  std::string compilerPath{}; 
+  const auto compilerName = systemCompiler();
+  const auto compilerStandardVersion = systemCompilerVersion();
+
+  if (compilerName.has_value() && compilerStandardVersion.has_value()) {
+    compilerPath = constructCompilerPath(
+      compilerName.value(), std::to_string(compilerStandardVersion.value())
+    );
+  } else {
+    std::cerr << "Error: Unknown compiler" << '\n';
+    return 1;
+  }
+
+
   fs::path sourcePath{};
   fs::path outputPath = "./out";
-  std::string preferredCompiler = evaluatePreferredCompiler();
   bool runBinary = false;
   bool runValgrind = false;
-
   bool skipArgument = false;
-  for (int i = 1; i < argc; ++i)
-  {
-    if (skipArgument)
-    {
+
+  for (int i = 1; i < argc; ++i) {
+    if (skipArgument) {
       skipArgument = false;
       continue;
     }
 
     std::string currentArg{argv[i]};
-
-    if (std::regex_match(currentArg, SOURCEPATH_REGEX) && sourcePath.empty())
-    {
+    
+    if (std::regex_match(currentArg, SOURCEPATH_REGEX) && sourcePath.empty()) {
       sourcePath = currentArg;
-    }
-    else if (currentArg == "-r")
-    {
+    } else if (currentArg == "-r") {
       runBinary = true;
-    }
-    else if (currentArg == "-rv")
-    {
+    } else if (currentArg == "-rv") {
       runValgrind = true;
-    }
-    else if (currentArg == "-c")
-    {
-      if (i + 1 < argc && std::regex_match(argv[i + 1], COMPILER_REGEX))
-      {
-        preferredCompiler = evaluatePreferredCompiler(argv[i + 1]);
-        skipArgument = true;
-      }
-      else
-      {
-        std::cerr << "Error: Compiler flag -c requires a valid compiler as the next argument.\n";
-        return 4;
-      }
-    }
-    else if (currentArg == "-o")
-    {
-      if (i + 1 < argc)
-      {
+    } else if (currentArg == "-o" && i + 1 < argc) {
         outputPath = argv[i + 1];
         skipArgument = true;
-      }
-      else
-      {
-        std::cerr << "Error: Output flag -o requires a valid output directory path as the next argument.\n";
-        return 4;
-      }
-    }
-    else
-    {
-      std::cout << "Error: Invalid argument or flag: " << currentArg << '\n';
-      return 4;
+    } else if (currentArg == "-c" && i + 1 < argc) {
+        auto preferredCompiler = constructPreferredCompilerPath(argv[i + 1]);
+        if (preferredCompiler.has_value()) {
+          compilerPath = preferredCompiler.value();
+          skipArgument = true;
+        } else {
+          std::cerr << "Error: Unknown Compiler " << argv[i + 1] << '\n';
+          return 1;
+        }
     }
   }
 
   // base file was not provided or is empty
-  if (sourcePath.empty() || !fs::exists(sourcePath))
-  {
+  if (sourcePath.empty() || !fs::exists(sourcePath)) {
     std::cout << "\033[38;5;160mProcess terminated -- exit code 2\033[0m\n";
     std::cout << "-- Possible Causes:\n";
     std::cout << "\033[38;5;95m-- source file was not provided\n";
@@ -82,46 +66,40 @@ int main(int argc, char **argv)
   }
 
   // extract source file name
-  std::string sourceFileName = sourcePath.string().substr(0, sourcePath.string().find_last_of('.'));
+  std::string sourceFileName =
+      sourcePath.string().substr(0, sourcePath.string().find_last_of('.'));
 
   // check if output directory exists
-  if (!fs::is_directory(outputPath))
-  {
-    while (true)
-    {
-      std::cout << "Create output directory " + outputPath.string() + "/ [y,n]: ";
+  if (!fs::is_directory(outputPath)) {
+    while (true) {
+      std::cout << "Create output directory " + outputPath.string() +
+                       "/ [y,n]: ";
       std::string input;
       std::getline(std::cin, input);
 
-      if (input == "y" || input == "Y")
-      {
+      if (input == "y" || input == "Y") {
         fs::create_directory(outputPath);
-        std::cout << "Output directory created. Binary can be found at " << outputPath.string() << "/" << sourceFileName << '\n';
+        std::cout << "Output directory created. Binary can be found at "
+                  << outputPath.string() << "/" << sourceFileName << '\n';
         break;
-      }
-      else if (input == "n" || input == "N")
-      {
+      } else if (input == "n" || input == "N") {
         std::cerr << "Error: Operation aborted by user.\n";
         return 3;
-      }
-      else
-      {
+      } else {
         std::cout << "Invalid input. Please enter 'y' or 'n'.\n";
       }
     }
   }
 
   // construct the base system command
-  std::string command = (preferredCompiler + " " + sourcePath.string() + " -o " + outputPath.string() + "/" + sourceFileName + " ");
+  std::string command =
+      (compilerPath + " " + sourcePath.string() + " -o " +
+       outputPath.string() + "/" + sourceFileName + " ");
 
-  // get -ld files from the base file
   std::vector<fs::path> includePaths;
-  try
-  {
+  try {
     includePaths = ExtractIncludePaths(sourcePath);
-  }
-  catch (const std::exception &e)
-  {
+  } catch (const std::exception &e) {
     std::cerr << "\033[38;5;160m" << e.what() << "\033[0m\n";
     std::cout << "-- Possible Causes:\n\033[38;5;95m";
     std::cout << "-- File might not be readable\n";
@@ -130,37 +108,30 @@ int main(int argc, char **argv)
     return 3;
   }
 
-  for (const fs::path &path : includePaths)
-  {
+  for (const fs::path &path : includePaths) {
     if (path.filename() != sourcePath)
       command += (path.string() + " ");
   }
 
-  std::cout << command << '\n';
-
   // check for successfull compilation
-  if (system(command.c_str()) != 0)
-  {
-    std::cout << "Compilation failed with error code: \n";
+  if (system(command.c_str()) != 0) {
+    std::cerr << "Compilation failed \n";
     return 3;
   }
-
+  std::cout << "command: " << command;
+ 
   // if run is true
-  if (runBinary || runValgrind)
-  {
-    std::string runCommand;
-    if (runValgrind)
-    {
-      runCommand = "valgrind " + outputPath.string() + "/" + sourceFileName;
+  if (runBinary || runValgrind) {
+    std::string runCommand{};
+    if (runValgrind) {
+      runCommand = "valgrind ";
     }
-    else
-    {
-      runCommand = outputPath.string() + "/" + sourceFileName;
-    }
+    runCommand += outputPath.string() + "/" + sourceFileName;
+
+    std::cout << ", runCommand: " << runCommand << '\n';
 
     int result = system(runCommand.c_str());
-    if (result != 0)
-    {
+    if (result != 0) {
       std::cerr << "Execution failed. -- exit code: " << result << std::endl;
       return result;
     }
@@ -169,8 +140,7 @@ int main(int argc, char **argv)
   return 0;
 }
 
-std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath)
-{
+std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath) {
   // check if file is readable
   std::ifstream file(filePath);
   if (!file.is_open())
@@ -181,10 +151,8 @@ std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath)
   std::smatch match{};
 
   std::string line{};
-  while (std::getline(file, line))
-  {
-    if (std::regex_match(line, match, HEADER_REGEX))
-    {
+  while (std::getline(file, line)) {
+    if (std::regex_match(line, match, HEADER_REGEX)) {
       matches.push_back(suffixCpp(match[1].str()));
     }
   }
@@ -193,44 +161,65 @@ std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath)
   return matches;
 }
 
-std::vector<std::string> splitString(const std::string &str, char delimiter)
-{
+std::vector<std::string> splitString(const std::string &str, char delimiter) {
   std::vector<std::string> result;
   std::stringstream ss(str);
   std::string token;
 
-  while (std::getline(ss, token, delimiter))
-  {
+  while (std::getline(ss, token, delimiter)) {
     result.push_back(token);
   }
 
   return result;
 }
 
-std::string evaluatePreferredCompiler(const std::string &compiler)
-{
-
-  if (compiler.empty())
-  {
-    return "clang++ -std=c++20";
-  }
-
-  auto tokens = splitString(compiler, '-');
-
-  if (tokens.size() != 2)
-  {
-    return "clang++ -std=c++20";
-  }
-
-  if (tokens[0] == "gnu")
-  {
-    return "g++-" + tokens[1];
-  }
-  return "clang++ -std=c++" + tokens[1];
-}
-
-std::string suffixCpp(const std::string &str)
-{
+std::string suffixCpp(const std::string &str) {
   std::string res = str.substr(0, str.find_last_of('.'));
   return res + ".cpp";
+}
+
+std::optional<std::string> systemCompiler() {
+#ifdef __clang__
+  return "clang++";
+#elif defined(__GNUC__)
+  return "g++";
+#else
+  return std::nullopt;
+#endif
+}
+
+std::optional<int> systemCompilerVersion() {
+  enum CppStandard : long {
+    CPP98 = 199711L,
+    CPP11 = 201103L,
+    CPP14 = 201402L,
+    CPP17 = 201703L,
+    CPP20 = 202002L
+  };
+
+  switch (__cplusplus) {
+  case CPP98: return 98;  // C++98
+  case CPP11: return 11;  // C++11
+  case CPP14: return 14;  // C++14
+  case CPP17: return 17;  // C++17
+  case CPP20: return 20;  // C++20
+  default: return std::nullopt;        
+}
+}
+
+std::optional<std::string> constructPreferredCompilerPath(const std::string &compilerName) {
+  if (!std::regex_match(compilerName, COMPILER_REGEX)) {
+    return std::nullopt;
+  }
+
+  const auto tokens = splitString(compilerName, '-');
+  const std::string selectedCompiler = tokens[0] == "gnu"
+    ? "g++"
+    : "clang++";
+
+  return constructCompilerPath(selectedCompiler, tokens[1]);
+}
+
+std::string constructCompilerPath(const std::string &compilerName, const std::string &compilerVersion) {
+  return compilerName + " -std=c++" + compilerVersion;
 }
