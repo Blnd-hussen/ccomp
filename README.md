@@ -18,7 +18,7 @@ The program expects at least one argument, which should be the path to a C++ fil
 ccomp [options] <source_file>
 
 Options:
-  -c,  --compiler      Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is clang++ -std=c++20.
+  -c,  --compiler      Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is system.
   -rv, --valgrind     Run the compiled program using Valgrind memory debugger after successful compilation (off by default).
   -r,  --run          Executes the compiled binary after successful compilation (default: off)
   -o,  --output       Specifies the output directory for the compiled binary (default: ./out)
