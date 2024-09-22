@@ -16,8 +16,10 @@ namespace fs = std::filesystem;
 enum class ErrorCode : int {
   INVALID_COMPILER_PATH = 1,
   INVALID_SOURCE_PATH = 2,
-  INVALUD_SYSTEM_COMMAND = 3,
-  PROCESS_ABORTED = 4
+  PROCESS_ABORTED = 3,
+  FILE_NOT_FOUND = 4,
+  COMPILATION_FAIL = 5,
+  EXECUTION_FAIL = 6
 };
 
 // constants
@@ -29,7 +31,7 @@ inline const std::regex SOURCEPATH_REGEX("^.+\\.cpp$");
 std::vector<std::string> splitString(const std::string &str, char delimiter);
 std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath);
 std::string suffixCpp(const std::string &str);
-void printError(const ErrorCode errorType, const std::string &message, const std::string source);
+int exitError(const ErrorCode errorType, const std::string &message, const std::string &source = "");
 
 std::optional<std::string> systemCompiler();
 std::optional<int> systemCompilerVersion();
