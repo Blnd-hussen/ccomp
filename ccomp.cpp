@@ -1,11 +1,7 @@
 #include "./ccomp.hpp"
+#include "argparse/include/argparse/argparse.hpp"
 
 int main(int argc, char **argv) {
-
-  if (argc < 2) {
-    std::cout << "CCOMP\n";
-    return 0;
-  }
 
   std::string compilerPath{}; 
   const auto compilerName = systemCompiler();
@@ -17,62 +13,57 @@ int main(int argc, char **argv) {
     );
   } else {
     return exitError(
-          ErrorCode::INVALID_COMPILER_PATH, 
+          ErrorType::INVALID_COMPILER_PATH, 
           "Unknown and/or Invalid System compiler", 
           std::to_string(__cplusplus)
     );
   }
 
-  fs::path sourcePath{};
-  fs::path outputPath = "./out";
-  bool runBinary = false;
-  bool runValgrind = false;
-  bool skipArgument = false;
+  argparse::ArgumentParser program("ccomp");
 
-  for (int i = 1; i < argc; ++i) {
-    if (skipArgument) {
-      skipArgument = false;
-      continue;
-    }
+  program.add_argument("sourceFilePath")
+    .help("c++ source file to be processed.")
+    .required();
 
-    std::string currentArg{argv[i]};
-    
-    if (std::regex_match(currentArg, SOURCEPATH_REGEX) && sourcePath.empty()) {
-      sourcePath = currentArg;
-    } else if (currentArg == "-r") {
-      runBinary = true;
-    } else if (currentArg == "-rv") {
-      runValgrind = true;
-    } else if (currentArg == "-o" && i + 1 < argc) {
-        outputPath = argv[i + 1];
-        skipArgument = true;
-    } else if (currentArg == "-c" && i + 1 < argc) {
-        auto preferredCompiler = constructPreferredCompilerPath(argv[i + 1]);
-        if (preferredCompiler.has_value()) {
-          compilerPath = preferredCompiler.value();
-          skipArgument = true;
-        } else {
-          return exitError(
-                ErrorCode::INVALID_COMPILER_PATH,
-                "The -c flag expects a valid compilerName-compilerVersion",
-                argv[i + 1]
-          );
-        }
-    }
+  program.add_argument("-r", "--run")
+    .help("Executes the compiled binary after successful compilation.")
+    .flag();
+
+  program.add_argument("-rv", "--runValgrind")
+    .help("Executes the compiled binary under Valgrind memory debugger after successful compilation.")
+    .flag();
+
+  program.add_argument("-o", "--output")
+    .help("Specifies the output directory for the compiled binary.")
+    .default_value(std::string("./out"))
+    .required();
+
+  program.add_argument("-c", "--compiler")
+    .help("Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). regex: ^(gnu|clang)-[0-9]{2}$")
+    .default_value(compilerPath)
+    .required();
+  
+
+  try {
+    program.parse_args(argc, argv);
+  }
+  catch (std::exception &e) {
+    std::cerr << e.what() << '\n';
+    std::exit(static_cast<int>(ErrorType::ARGUMENT_PARSING_ERROR));
   }
 
-  if (sourcePath.empty() || !fs::exists(sourcePath)) {
+  const fs::path sourceFilePath = program.get<std::string>("sourceFilePath");
+  const std::string sourceFileName = sourceFilePath.filename().replace_extension("");
+
+  if (!std::regex_match(sourceFileName, SOURCE_FILE_PATH_REGEX) && !fs::exists(sourceFileName)) {
     return exitError(
-          ErrorCode::INVALID_SOURCE_PATH,
+          ErrorType::INVALID_SOURCE_PATH,
           "Source path was not provided or does not exist",
-          (!sourcePath.empty() ? sourcePath : "")
+          (!sourceFilePath.empty() ? sourceFilePath : "")
     );
   }
 
-  std::string sourceFileName =
-      sourcePath.string().substr(0, sourcePath.string().find_last_of('.'));
-
-  // check if output directory exists
+  const fs::path outputPath = program.get<std::string>("--output");
   if (!fs::is_directory(outputPath)) {
     while (true) {
       std::cout << "Create output directory " + outputPath.string() +
@@ -87,8 +78,8 @@ int main(int argc, char **argv) {
         break;
       } else if (input == "n" || input == "N") {    
         return exitError(
-                ErrorCode::PROCESS_ABORTED,
-                "Proccess aborted by user "
+              ErrorType::PROCESS_ABORTED,
+              "Proccess aborted by user "
         );
       } else {
         std::cout << "Invalid input. Please enter 'y' or 'n'.\n";
@@ -96,50 +87,60 @@ int main(int argc, char **argv) {
     }
   }
 
-  // construct the base system command
+  if (program.is_used("--compiler")) {
+    const std::optional<std::string> preferredCompiler = constructPreferredCompilerPath(
+      program.get<std::string>("--compiler")
+    );
+
+    if (!preferredCompiler.has_value()) {
+      return exitError(
+        ErrorType::INVALID_COMPILER_PATH,
+        "The '-c' flag expects a compiler and compiler version in the following format: '^(gnu|clang)-[0-9]{2}$'"
+      );
+    }
+    
+    compilerPath = preferredCompiler.has_value() 
+      ? preferredCompiler.value()
+      : compilerPath;
+  }
+
   std::string command =
-      (compilerPath + " " + sourcePath.string() + " -o " +
+      (compilerPath + " " + sourceFilePath.string() + " -o " +
        outputPath.string() + "/" + sourceFileName + " ");
 
   try {
-    auto const includePaths = ExtractIncludePaths(sourcePath);
+    auto const includePaths = ExtractIncludePaths(sourceFilePath);
 
     for (const fs::path &path : includePaths) {
-      if (path.filename() != sourcePath.filename())
+      if (path.filename() != sourceFilePath.filename())
         command += (path.string() + " ");
     }
-  } catch (const std::runtime_error &re) {
+  } 
+  catch (const std::runtime_error &re) {
     return exitError(
-            ErrorCode::FILE_NOT_FOUND,
-            re.what()
+          ErrorType::FILE_NOT_FOUND,
+          re.what()
     );
   }
 
-  // check for successfull compilation
   if (std::system(command.c_str()) != 0) {
     return exitError(
-          ErrorCode::COMPILATION_FAIL,
+          ErrorType::COMPILATION_FAIL,
           "Compilation Failed",
           command
     );
   }
 
-  std::cout << "command: " << command;
- 
-  // if run is true
-  if (runBinary || runValgrind) {
+  if (program["--run"] == true || program["--runValgrind"] == true) {
     std::string runCommand{};
-    if (runValgrind) {
+    if (program["--runValgrind"] == true) {
       runCommand = "valgrind ";
     }
+
     runCommand += outputPath.string() + "/" + sourceFileName;
-
-    std::cout << ", runCommand: " << runCommand << '\n';
-
-    int result = std::system(runCommand.c_str());
-    if (result != 0) {
+    if (std::system(runCommand.c_str()) != 0) {
       return exitError(
-        ErrorCode::EXECUTION_FAIL,
+        ErrorType::EXECUTION_FAIL,
         "Execution Failed",
         runCommand
       );
@@ -217,7 +218,7 @@ std::vector<std::string> splitString(const std::string &str, char delimiter) {
   return result;
 }
 
-int exitError(const ErrorCode errorType, const std::string &message, const std::string &source) {
+int exitError(const ErrorType errorType, const std::string &message, const std::string &source) {
   int errorCode = static_cast<int>(errorType);
   std::cerr << "\033[31merror\033[0m: fail code " << errorCode << '\n';
   std::cerr << "- " << message << '\n';
