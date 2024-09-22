@@ -1,6 +1,7 @@
 #include "./ccomp.hpp"
 
 int main(int argc, char **argv) {
+
   if (argc < 2) {
     std::cout << "CCOMP\n";
     return 0;
@@ -10,6 +11,7 @@ int main(int argc, char **argv) {
   const auto compilerName = systemCompiler();
   const auto compilerStandardVersion = systemCompilerVersion();
 
+  // ! invalid compiler -> 1
   if (compilerName.has_value() && compilerStandardVersion.has_value()) {
     compilerPath = constructCompilerPath(
       compilerName.value(), std::to_string(compilerStandardVersion.value())
@@ -49,13 +51,14 @@ int main(int argc, char **argv) {
           compilerPath = preferredCompiler.value();
           skipArgument = true;
         } else {
+          // ! invalid compiler -> 1
           std::cerr << "Error: Unknown Compiler " << argv[i + 1] << '\n';
           return 1;
         }
     }
   }
 
-  // base file was not provided or is empty
+  // ! Invalud source path -> 2
   if (sourcePath.empty() || !fs::exists(sourcePath)) {
     std::cout << "\033[38;5;160mProcess terminated -- exit code 2\033[0m\n";
     std::cout << "-- Possible Causes:\n";
@@ -83,6 +86,8 @@ int main(int argc, char **argv) {
                   << outputPath.string() << "/" << sourceFileName << '\n';
         break;
       } else if (input == "n" || input == "N") {
+        
+        // ! proccess aborted by user -> 3 
         std::cerr << "Error: Operation aborted by user.\n";
         return 3;
       } else {
@@ -100,6 +105,8 @@ int main(int argc, char **argv) {
   try {
     includePaths = ExtractIncludePaths(sourcePath);
   } catch (const std::exception &e) {
+
+    // ! #include file not found -> 4
     std::cerr << "\033[38;5;160m" << e.what() << "\033[0m\n";
     std::cout << "-- Possible Causes:\n\033[38;5;95m";
     std::cout << "-- File might not be readable\n";
@@ -114,7 +121,8 @@ int main(int argc, char **argv) {
   }
 
   // check for successfull compilation
-  if (system(command.c_str()) != 0) {
+  // ! command faild -> 5
+  if (std::system(command.c_str()) != 0) {
     std::cerr << "Compilation failed \n";
     return 3;
   }
@@ -130,7 +138,7 @@ int main(int argc, char **argv) {
 
     std::cout << ", runCommand: " << runCommand << '\n';
 
-    int result = system(runCommand.c_str());
+    int result = std::system(runCommand.c_str());
     if (result != 0) {
       std::cerr << "Execution failed. -- exit code: " << result << std::endl;
       return result;
@@ -138,6 +146,43 @@ int main(int argc, char **argv) {
   }
 
   return 0;
+}
+
+
+
+
+std::optional<int> systemCompilerVersion() {
+  enum CppStandard : long {
+    CPP98 = 199711L,
+    CPP11 = 201103L,
+    CPP14 = 201402L,
+    CPP17 = 201703L,
+    CPP20 = 202002L
+  };
+
+  switch (__cplusplus) {
+  case CPP98: return 98;  // C++98
+  case CPP11: return 11;  // C++11
+  case CPP14: return 14;  // C++14
+  case CPP17: return 17;  // C++17
+  case CPP20: return 20;  // C++20
+  default: return std::nullopt;        
+  }
+}
+
+std::optional<std::string> systemCompiler() {
+#ifdef __clang__
+  return "clang++";
+#elif defined(__GNUC__)
+  return "g++";
+#else
+  return std::nullopt;
+#endif
+}
+
+std::string suffixCpp(const std::string &str) {
+  std::string res = str.substr(0, str.find_last_of('.'));
+  return res + ".cpp";
 }
 
 std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath) {
@@ -173,38 +218,26 @@ std::vector<std::string> splitString(const std::string &str, char delimiter) {
   return result;
 }
 
-std::string suffixCpp(const std::string &str) {
-  std::string res = str.substr(0, str.find_last_of('.'));
-  return res + ".cpp";
-}
-
-std::optional<std::string> systemCompiler() {
-#ifdef __clang__
-  return "clang++";
-#elif defined(__GNUC__)
-  return "g++";
-#else
-  return std::nullopt;
-#endif
-}
-
-std::optional<int> systemCompilerVersion() {
-  enum CppStandard : long {
-    CPP98 = 199711L,
-    CPP11 = 201103L,
-    CPP14 = 201402L,
-    CPP17 = 201703L,
-    CPP20 = 202002L
-  };
-
-  switch (__cplusplus) {
-  case CPP98: return 98;  // C++98
-  case CPP11: return 11;  // C++11
-  case CPP14: return 14;  // C++14
-  case CPP17: return 17;  // C++17
-  case CPP20: return 20;  // C++20
-  default: return std::nullopt;        
-}
+void printError(const ErrorCode errorType, const std::string &message, const std::string source) {
+  int errorCode{};
+  switch (errorType)
+  {
+    case ErrorCode::INVALID_COMPILER_PATH:
+      errorCode = 1;
+      break;
+    case ErrorCode::INVALID_SOURCE_PATH:
+      errorCode = 2;
+      break;
+    case ErrorCode::INVALUD_SYSTEM_COMMAND:
+      errorCode = 3;
+      break;
+    case ErrorCode::PROCESS_ABORTED:
+      errorCode = 4;
+      break;
+  }
+  std::cerr << "Error: fail code " << errorCode << '\n';
+  std::cerr << message << '\n';
+  std::cerr << "Error Source: " << source << '\n';
 }
 
 std::optional<std::string> constructPreferredCompilerPath(const std::string &compilerName) {
