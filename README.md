@@ -1,6 +1,11 @@
 # C++ Compiler Automation Tool (ccomp)
 
-CCOMP is a command-line utility designed to automate the compilation and execution of C++ source files on Unix-like systems. it leverages regular expressions to extract include paths directly from the provided C++ code.
+CCOMP is a command-line utility designed to automate the compilation and execution of C++ source files on Unix-like systems.  
+the program uses p-ranav's argparse library to parse arguments and regular expressions to find the cpp files based on the include files.
+
+> [!Note]: The tool assumes that each header file (.hpp) follows the pattern: R"(^\s*#include\s*\"([^\"]+)\"\s*$)",  
+> meaning the program will look for a corresponding C++ file within the project directory.  
+> For example, #include "header.hpp" is expected to have a matching header.cpp file.
 
 ## Features
 
@@ -18,7 +23,7 @@ The program expects at least one argument, which should be the path to a C++ fil
 ccomp [options] <source_file>
 
 Options:
-  -c,  --compiler      Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is system.
+  -c,  --compiler     Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is system.
   -rv, --valgrind     Run the compiled program using Valgrind memory debugger after successful compilation (off by default).
   -r,  --run          Executes the compiled binary after successful compilation (default: off)
   -o,  --output       Specifies the output directory for the compiled binary (default: ./out)

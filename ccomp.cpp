@@ -21,6 +21,16 @@ int main(int argc, char **argv) {
 
   argparse::ArgumentParser program("ccomp");
 
+  program.add_description(std::string(
+    "CCOMP is a command-line utility designed to automate the compilation and execution of C++ source files\n"
+    "on Unix-like systems. the program uses p-ranav's argparse library to parse arguments and\n"
+    "regular expressions to find the cpp files based on the include files.\n\n"
+
+    "Note: The tool assumes that each header file (.hpp) follows the pattern: R\"(^\\s*#include\\s*\\\"([^\\\"]+)\"\\s*$)\"\n"
+    "meaning the program will look for a corresponding C++ file within the project directory.\n"
+    "For example, #include \"header.hpp\" is expected to have a matching header.cpp file."
+  ));
+
   program.add_argument("sourceFilePath")
     .help("c++ source file to be processed.")
     .required();
