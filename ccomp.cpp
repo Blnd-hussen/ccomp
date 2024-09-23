@@ -143,9 +143,7 @@ int main(int argc, char **argv) {
     );
   }
 
-  std::cout << command << '\n';  
-
-  if (std::system(command.c_str()) != 0) {
+  if (safeSystemCall(command) != 0) {
     return exitError(
           ErrorType::COMPILATION_FAIL,
           "Compilation Failed",
@@ -160,7 +158,7 @@ int main(int argc, char **argv) {
     }
 
     runCommand += outputPath.string() + "/" + sourceFileName;
-    if (std::system(runCommand.c_str()) != 0) {
+    if (safeSystemCall(runCommand) != 0) {
       return exitError(
         ErrorType::EXECUTION_FAIL,
         "Execution Failed",
@@ -249,6 +247,25 @@ std::vector<std::string> splitString(const std::string &str, char delimiter) {
   }
 
   return result;
+}
+
+int safeSystemCall(const std::string& command) {
+  std::array<char, 128> buffer;
+  std::string result{};
+  
+  FILE* pipe = popen(command.c_str(), "r");
+  if (!pipe) {
+      throw std::runtime_error("popen() failed!");
+  }
+  
+  while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+      result += buffer.data();
+  }
+  
+  int returnCode = pclose(pipe);
+  std::cout << result;
+  
+  return returnCode;
 }
 
 int exitError(const ErrorType errorType, const std::string &message, const std::string &source) {

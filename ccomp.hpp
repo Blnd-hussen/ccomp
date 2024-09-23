@@ -34,6 +34,7 @@ std::vector<std::string> splitString(const std::string &str, char delimiter);
 std::map<fs::path, fs::path> ExtractHeaderSourcePairs(const fs::path &sourceFilePath);
 std::string suffixCpp(const std::string &str);
 std::string getRootDir(const fs::path &path);
+int safeSystemCall(const std::string &command);
 int exitError(const ErrorType errorType, const std::string &message, const std::string &source = "");
 
 
@@ -43,3 +44,4 @@ std::optional<std::string>
 constructPreferredCompilerPath(const std::string &compilerName);
 std::string constructCompilerPath(const std::string &compilerName,
                                   const std::string &compilerVersion);
+
