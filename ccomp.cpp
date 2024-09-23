@@ -54,30 +54,40 @@ int main(int argc, char **argv) {
     .required();
   
 
+  fs::path sourceFilePath{};
   try {
     program.parse_args(argc, argv);
+
+    sourceFilePath = program.get<std::string>("sourceFilePath");
+    
+    if (!std::regex_match(sourceFilePath.string(), SOURCE_FILE_PATH_REGEX)) {
+      throw std::invalid_argument(program.get<std::string>("sourceFilePath"));
+    }
+
+    if (!fs::exists(sourceFilePath)) {
+      throw std::ios::failure(sourceFilePath.string() + " could not be found.");
+    }
   }
-  catch (std::exception &e) {
+  catch (const std::invalid_argument &e) {
+    std::cerr << e.what() << '\n';
+    std::exit(static_cast<int>(ErrorType::INVALID_SOURCE_PATH));
+  }
+  catch (const std::ios_base::failure &e) {
+    std::cerr << e.what() << '\n';
+    std::exit(static_cast<int>(ErrorType::FILE_IO_ERROR));
+  }
+  catch (const std::exception &e) {
     std::cerr << e.what() << '\n';
     std::exit(static_cast<int>(ErrorType::ARGUMENT_PARSING_ERROR));
   }
 
-  const fs::path sourceFilePath = program.get<std::string>("sourceFilePath");
+
   const std::string sourceFileName = sourceFilePath.filename().replace_extension("");
-
-  if (!std::regex_match(sourceFileName, SOURCE_FILE_PATH_REGEX) && !fs::exists(sourceFileName)) {
-    return exitError(
-          ErrorType::INVALID_SOURCE_PATH,
-          "Source path was not provided or does not exist",
-          (!sourceFilePath.empty() ? sourceFilePath : "")
-    );
-  }
-
   const fs::path outputPath = program.get<std::string>("--output");
+
   if (!fs::is_directory(outputPath)) {
     while (true) {
-      std::cout << "Create output directory " + outputPath.string() +
-                       "/ [y,n]: ";
+      std::cout << "Create output directory " + outputPath.string() + "/ [y,n]: ";
       std::string input;
       std::getline(std::cin, input);
 
@@ -114,24 +124,26 @@ int main(int argc, char **argv) {
       : compilerPath;
   }
 
-  std::string command =
-      (compilerPath + " " + sourceFilePath.string() + " -o " +
-       outputPath.string() + "/" + sourceFileName + " ");
+  std::string command =(
+    compilerPath + " " + sourceFilePath.string() + " -o " 
+    + outputPath.string() + "/" + sourceFileName + " "
+  );
 
   try {
-    auto const includePaths = ExtractIncludePaths(sourceFilePath);
+    const auto includePaths = ExtractHeaderSourcePairs(sourceFilePath);
 
-    for (const fs::path &path : includePaths) {
-      if (path.filename() != sourceFilePath.filename())
-        command += (path.string() + " ");
+    for (const auto &[hppPath, cppPath]: includePaths) {
+      command += (cppPath.string() + " ");
     }
   } 
   catch (const std::runtime_error &re) {
     return exitError(
-          ErrorType::FILE_NOT_FOUND,
+          ErrorType::FILE_IO_ERROR,
           re.what()
     );
   }
+
+  std::cout << command << '\n';  
 
   if (std::system(command.c_str()) != 0) {
     return exitError(
@@ -195,25 +207,36 @@ std::string suffixCpp(const std::string &str) {
   return res + ".cpp";
 }
 
-std::vector<fs::path> ExtractIncludePaths(const fs::path &filePath) {
-  // check if file is readable
-  std::ifstream file(filePath);
-  if (!file.is_open())
-    throw std::runtime_error("Read permission denied for " + filePath.string());
+std::map<fs::path, fs::path> ExtractHeaderSourcePairs(const fs::path &sourceFilePath) {
+  std::ifstream file(sourceFilePath);
+  if (!file.is_open()) {
+    throw std::runtime_error("Unable to open file: " + sourceFilePath.string());
+  }
 
-  // a list to hold the include paths
-  std::vector<fs::path> matches;
-  std::smatch match{};
+  std::map<fs::path, fs::path> headerToSourceMap;
+  std::smatch match;
+  std::string line;
+  const auto rootDir = getRootDir(sourceFilePath);
 
-  std::string line{};
   while (std::getline(file, line)) {
     if (std::regex_match(line, match, HEADER_REGEX)) {
-      matches.push_back(suffixCpp(match[1].str()));
+      fs::path headerFile = match[1].str();
+      fs::path cppFile = headerFile.replace_extension("cpp");
+
+      if (cppFile.filename() == sourceFilePath.filename()) {
+        continue;
+      }
+
+      for (const auto &entry : fs::recursive_directory_iterator(rootDir)) {
+        if (cppFile.filename() == entry.path().filename()) {
+          headerToSourceMap[headerFile] = entry.path();
+          break;
+        }
+      }
     }
   }
-  file.close();
 
-  return matches;
+  return headerToSourceMap;
 }
 
 std::vector<std::string> splitString(const std::string &str, char delimiter) {
@@ -248,6 +271,22 @@ std::optional<std::string> constructPreferredCompilerPath(const std::string &com
     : "clang++";
 
   return constructCompilerPath(selectedCompiler, tokens[1]);
+}
+
+std::string getRootDir(const fs::path &path) {
+  fs::path rootDir{};
+  fs::path tempPath = path;
+
+  while (!tempPath.parent_path().empty()) {
+    rootDir = tempPath.parent_path();
+    tempPath = tempPath.parent_path();
+  }
+
+  if (rootDir.empty()) {
+    rootDir = "./";
+  }
+
+  return rootDir;
 }
 
 std::string constructCompilerPath(const std::string &compilerName, const std::string &compilerVersion) {
