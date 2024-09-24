@@ -3,7 +3,7 @@
 CCOMP is a command-line utility designed to automate the compilation and execution of C++ source files on Unix-like systems.  
 the program uses p-ranav's argparse library to parse arguments and regular expressions to find the cpp files based on the include files.
 
-> [!Note]: The tool assumes that each header file (.hpp) follows the pattern: R"(^\s*#include\s*\"([^\"]+)\"\s*$)",  
+> !Note: The tool assumes that each header file (.hpp) follows the pattern: R"(^\s*#include\s*\"([^\"]+)\"\s*$)",  
 > meaning the program will look for a corresponding C++ file within the project directory.  
 > For example, #include "header.hpp" is expected to have a matching header.cpp file.
 
