@@ -1,5 +1,12 @@
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <string>
+
 #include "./ccomp.hpp"
-#include "argparse/include/argparse/argparse.hpp"
+#include "includes/argparse/include/argparse/argparse.hpp"
+#include "includes/file_utils/file_utils.hpp"
+#include "includes/system_utils/system_utils.hpp"
 
 int main(int argc, char **argv) {
 
@@ -61,31 +68,37 @@ int main(int argc, char **argv) {
     sourceFilePath = program.get<std::string>("sourceFilePath");
     
     if (!std::regex_match(sourceFilePath.string(), SOURCE_FILE_PATH_REGEX)) {
-      throw std::invalid_argument(program.get<std::string>("sourceFilePath"));
+      throw std::invalid_argument(program.get<std::string>("sourceFilePath") + " is not a valid cplusplus file.");
     }
 
-    if (!fs::exists(sourceFilePath)) {
+    if (!fileExists(sourceFilePath)) {
       throw std::ios::failure(sourceFilePath.string() + " could not be found.");
     }
   }
   catch (const std::invalid_argument &e) {
-    std::cerr << e.what() << '\n';
-    std::exit(static_cast<int>(ErrorType::INVALID_SOURCE_PATH));
+    return exitError(
+      ErrorType::INVALID_SOURCE_PATH,
+      e.what()
+    );
   }
   catch (const std::ios_base::failure &e) {
-    std::cerr << e.what() << '\n';
-    std::exit(static_cast<int>(ErrorType::FILE_IO_ERROR));
+    return exitError(
+      ErrorType::FILE_IO_ERROR, 
+      e.what()
+    );
   }
   catch (const std::exception &e) {
-    std::cerr << e.what() << '\n';
-    std::exit(static_cast<int>(ErrorType::ARGUMENT_PARSING_ERROR));
+    return exitError(
+      ErrorType::ARGUMENT_PARSING_ERROR, 
+      e.what()
+    );
   }
 
 
   const std::string sourceFileName = sourceFilePath.filename().replace_extension("");
   const fs::path outputPath = program.get<std::string>("--output");
 
-  if (!fs::is_directory(outputPath)) {
+  if (!directoryExists(outputPath)) {
     while (true) {
       std::cout << "Create output directory " + outputPath.string() + "/ [y,n]: ";
       std::string input;
@@ -133,19 +146,21 @@ int main(int argc, char **argv) {
     const auto includePaths = ExtractHeaderSourcePairs(sourceFilePath);
 
     for (const auto &[hppPath, cppPath]: includePaths) {
-      command += (cppPath.string() + " ");
+      if (fileExists(hppPath)) {
+        command += (cppPath.string() + " ");
+      } else {
+        throw std::ios::failure(hppPath.string() + " could not be found.");
+      }
     }
   } 
-  catch (const std::runtime_error &re) {
+  catch (const std::exception &e) {
     return exitError(
           ErrorType::FILE_IO_ERROR,
-          re.what()
+          e.what()
     );
   }
 
-  std::cout << command << '\n';  
-
-  if (std::system(command.c_str()) != 0) {
+  if (safeSystemCall(command) != 0) {
     return exitError(
           ErrorType::COMPILATION_FAIL,
           "Compilation Failed",
@@ -160,7 +175,7 @@ int main(int argc, char **argv) {
     }
 
     runCommand += outputPath.string() + "/" + sourceFileName;
-    if (std::system(runCommand.c_str()) != 0) {
+    if (safeSystemCall(runCommand) != 0) {
       return exitError(
         ErrorType::EXECUTION_FAIL,
         "Execution Failed",
@@ -170,41 +185,6 @@ int main(int argc, char **argv) {
   }
 
   return 0;
-}
-
-
-std::optional<int> systemCompilerVersion() {
-  enum CppStandard : long {
-    CPP98 = 199711L,
-    CPP11 = 201103L,
-    CPP14 = 201402L,
-    CPP17 = 201703L,
-    CPP20 = 202002L
-  };
-
-  switch (__cplusplus) {
-  case CPP98: return 98;  // C++98
-  case CPP11: return 11;  // C++11
-  case CPP14: return 14;  // C++14
-  case CPP17: return 17;  // C++17
-  case CPP20: return 20;  // C++20
-  default: return std::nullopt;        
-  }
-}
-
-std::optional<std::string> systemCompiler() {
-#ifdef __clang__
-  return "clang++";
-#elif defined(__GNUC__)
-  return "g++";
-#else
-  return std::nullopt;
-#endif
-}
-
-std::string suffixCpp(const std::string &str) {
-  std::string res = str.substr(0, str.find_last_of('.'));
-  return res + ".cpp";
 }
 
 std::map<fs::path, fs::path> ExtractHeaderSourcePairs(const fs::path &sourceFilePath) {
@@ -251,7 +231,7 @@ std::vector<std::string> splitString(const std::string &str, char delimiter) {
   return result;
 }
 
-int exitError(const ErrorType errorType, const std::string &message, const std::string &source) {
+int exitError(const ErrorType &errorType, const std::string &message, const std::string &source) {
   int errorCode = static_cast<int>(errorType);
   std::cerr << "\033[31merror\033[0m: fail code " << errorCode << '\n';
   std::cerr << "- " << message << '\n';
@@ -271,22 +251,6 @@ std::optional<std::string> constructPreferredCompilerPath(const std::string &com
     : "clang++";
 
   return constructCompilerPath(selectedCompiler, tokens[1]);
-}
-
-std::string getRootDir(const fs::path &path) {
-  fs::path rootDir{};
-  fs::path tempPath = path;
-
-  while (!tempPath.parent_path().empty()) {
-    rootDir = tempPath.parent_path();
-    tempPath = tempPath.parent_path();
-  }
-
-  if (rootDir.empty()) {
-    rootDir = "./";
-  }
-
-  return rootDir;
 }
 
 std::string constructCompilerPath(const std::string &compilerName, const std::string &compilerVersion) {
