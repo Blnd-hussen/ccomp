@@ -111,8 +111,8 @@ int main(int argc, char **argv) {
         break;
       } else if (input == "n" || input == "N") {    
         return exitError(
-              ErrorType::PROCESS_ABORTED,
-              "Proccess aborted by user "
+          ErrorType::PROCESS_ABORTED,
+          "Proccess aborted by user "
         );
       } else {
         std::cout << "Invalid input. Please enter 'y' or 'n'.\n";
@@ -155,16 +155,16 @@ int main(int argc, char **argv) {
   } 
   catch (const std::exception &e) {
     return exitError(
-          ErrorType::FILE_IO_ERROR,
-          e.what()
+      ErrorType::FILE_IO_ERROR,
+      e.what()
     );
   }
 
   if (safeSystemCall(command) != 0) {
     return exitError(
-          ErrorType::COMPILATION_FAIL,
-          "Compilation Failed",
-          command
+      ErrorType::COMPILATION_FAIL,
+      "Compilation Failed",
+      command
     );
   }
 
@@ -209,7 +209,8 @@ std::map<fs::path, fs::path> ExtractHeaderSourcePairs(const fs::path &sourceFile
 
       for (const auto &entry : fs::recursive_directory_iterator(rootDir)) {
         if (cppFile.filename() == entry.path().filename()) {
-          headerToSourceMap[headerFile] = entry.path();
+          fs::path fullHeaderPath = rootDir / headerFile;
+          headerToSourceMap[fullHeaderPath.replace_extension("hpp")] = entry.path();
           break;
         }
       }
