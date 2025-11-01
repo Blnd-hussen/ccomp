@@ -15,24 +15,20 @@ jobs:
       packages: write
 
     steps:
-      # Check out repository's code
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build the 'ccomp' binary using the Makefile
       - name: Build ccomp
         run: make
 
-      # Upload the compiled binary to the GitHub Release
-      # This takes the 'ccomp' file and attaches it as an asset
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # The URL to upload the asset to (provided by the release event)
           upload_url: ${{ github.event.release.upload_url }}
-
           asset_path: ./ccomp
           asset_name: ccomp-linux-x86_64
           asset_content_type: application/octet-stream
