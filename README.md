@@ -4,7 +4,7 @@ CCOMP is a command-line utility designed to automate the compilation and executi
 the program uses p-ranav's argparse library to parse arguments and regular expressions to find the cpp files based on the include files.
 
 > Note: The tool assumes that each header file (.hpp) follows the pattern: R"(^\s*#include\s*\"([^\"]+)\"\s*$)",  
-> meaning the program will look for a corresponding C++ file within the project directory.  
+> meaning the program will look for a corresponding C++ file within the root directory of the project.  
 > For example, #include "header.hpp" is expected to have a matching header.cpp file.
 
 ## Features
@@ -20,13 +20,15 @@ the program uses p-ranav's argparse library to parse arguments and regular expre
 The program expects at least one argument, which should be the path to a C++ file. Optionally, you can specify additional arguments to control the behaviour:
 
 ```bash
-ccomp [options] <source_file>
+ccomp [options] [compiler_flags] <source_file>
 
 Options:
-  -c,  --compiler     Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is system.
+  -c,  --compiler     Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). If no valid compiler is provided, the default is gnu.
   -rv, --valgrind     Run the compiled program using Valgrind memory debugger after successful compilation (off by default).
   -r,  --run          Executes the compiled binary after successful compilation (default: off)
   -o,  --output       Specifies the output directory for the compiled binary (default: ./out)
+  compiler_flags      Additional flags to pass to the compiler (e.g., -Wall, -g, "
+            "-Iinclude).
 ```
 
 ## Example
