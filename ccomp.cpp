@@ -1,222 +1,235 @@
 #include <cstdlib>
 #include <fstream>
-#include <sstream>
 #include <string>
 
 #include "./ccomp.hpp"
-#include "includes/argparse/include/argparse/argparse.hpp"
 #include "includes/file_utils/file_utils.hpp"
 #include "includes/system_utils/system_utils.hpp"
 
-int main(int argc, char **argv) {
-
-  std::string compilerPath{}; 
-  const auto compilerName = systemCompiler();
-  const auto compilerStandardVersion = systemCompilerVersion();
-
-  if (compilerName.has_value() && compilerStandardVersion.has_value()) {
-    compilerPath = constructCompilerPath(
-      compilerName.value(), std::to_string(compilerStandardVersion.value())
-    );
-  } else {
-    return exitError(
-          ErrorType::INVALID_COMPILER_PATH, 
-          "Unknown and/or Invalid System compiler", 
-          std::to_string(__cplusplus)
-    );
-  }
-
+/**
+ * @brief Parses command line arguments and builds the ProgramConfig.
+ */
+std::optional<ProgramConfig> parse_args(int argc, char **argv) {
   argparse::ArgumentParser program("ccomp");
-
-  program.add_description(std::string(
-    "CCOMP is a command-line utility designed to automate the compilation and execution of C++ source files\n"
-    "on Unix-like systems. the program uses p-ranav's argparse library to parse arguments and\n"
-    "regular expressions to find the cpp files based on the include files.\n\n"
-
-    "Note: The tool assumes that each header file (.hpp) follows the pattern: R\"(^\\s*#include\\s*\\\"([^\\\"]+)\"\\s*$)\"\n"
-    "meaning the program will look for a corresponding C++ file within the project directory.\n"
-    "For example, #include \"header.hpp\" is expected to have a matching header.cpp file."
-  ));
+  program.add_description(
+      "CCOMP is a command-line utility designed to automate the compilation "
+      "and execution of C++ source files on Unix-like systems.");
 
   program.add_argument("sourceFilePath")
-    .help("c++ source file to be processed.")
-    .required();
+      .help("c++ source file to be processed.")
+      .required();
 
-  program.add_argument("-r", "--run")
-    .help("Executes the compiled binary after successful compilation.")
-    .flag();
+  program.add_argument("compiler_flags")
+      .help("Additional flags to pass to the compiler (e.g., -Wall, -g, "
+            "-Iinclude).")
+      .remaining();
 
-  program.add_argument("-rv", "--runValgrind")
-    .help("Executes the compiled binary under Valgrind memory debugger after successful compilation.")
-    .flag();
-
+  program.add_argument("-r", "--run").flag();
+  program.add_argument("-rv", "--runValgrind").flag();
   program.add_argument("-o", "--output")
-    .help("Specifies the output directory for the compiled binary.")
-    .default_value(std::string("./out"))
-    .required();
+      .default_value(std::string("./out"))
+      .required();
 
   program.add_argument("-c", "--compiler")
-    .help("Specifies the preferred compiler to use (e.g., gnu-20 or clang-20). regex: ^(gnu|clang)-[0-9]{2}$")
-    .default_value(compilerPath)
-    .required();
-  
+      .help("Specifies the preferred compiler (e.g., gnu-20, clang++, g++-12).")
+      .default_value(std::string("g++"))
+      .required();
 
-  fs::path sourceFilePath{};
   try {
     program.parse_args(argc, argv);
 
-    sourceFilePath = program.get<std::string>("sourceFilePath");
-    
-    if (!std::regex_match(sourceFilePath.string(), SOURCE_FILE_PATH_REGEX)) {
-      throw std::invalid_argument(program.get<std::string>("sourceFilePath") + " is not a valid cplusplus file.");
+    ProgramConfig config;
+    config.sourceFilePath = program.get<std::string>("sourceFilePath");
+
+    if (!std::regex_match(config.sourceFilePath.string(),
+                          SOURCE_FILE_PATH_REGEX)) {
+      throw std::invalid_argument(program.get<std::string>("sourceFilePath") +
+                                  " is not a valid cplusplus file.");
+    }
+    if (!fileExists(config.sourceFilePath)) {
+      throw std::ios::failure(config.sourceFilePath.string() +
+                              " could not be found.");
     }
 
-    if (!fileExists(sourceFilePath)) {
-      throw std::ios::failure(sourceFilePath.string() + " could not be found.");
+    config.outputPath = program.get<std::string>("--output");
+    config.outputFileName =
+        config.sourceFilePath.filename().replace_extension("");
+    config.run = program.get<bool>("--run");
+    config.runValgrind = program.get<bool>("--runValgrind");
+
+    try {
+      config.extraCompilerFlags =
+          program.get<std::vector<std::string>>("compiler_flags");
+    } catch (const std::exception &e) {
     }
-  }
-  catch (const std::invalid_argument &e) {
-    return exitError(
-      ErrorType::INVALID_SOURCE_PATH,
-      e.what()
-    );
-  }
-  catch (const std::ios_base::failure &e) {
-    return exitError(
-      ErrorType::FILE_IO_ERROR, 
-      e.what()
-    );
-  }
-  catch (const std::exception &e) {
-    return exitError(
-      ErrorType::ARGUMENT_PARSING_ERROR, 
-      e.what()
-    );
-  }
 
+    const std::string compilerArg = program.get<std::string>("--compiler");
+    if (std::regex_match(compilerArg, COMPILER_REGEX)) {
+      const auto preferredCompiler =
+          constructPreferredCompilerPath(compilerArg);
+      if (!preferredCompiler) {
+        throw std::runtime_error(
+            "Invalid compiler format. Expected 'gnu-XX' or 'clang-XX'");
+      }
+      config.compilerPath = preferredCompiler.value();
+    } else {
+      config.compilerPath = compilerArg;
+    }
 
-  const std::string sourceFileName = sourceFilePath.filename().replace_extension("");
-  const fs::path outputPath = program.get<std::string>("--output");
+    return config;
 
-  if (!directoryExists(outputPath)) {
+  } catch (const std::exception &e) {
+    exitError(ErrorType::ARGUMENT_PARSING_ERROR, e.what());
+    return std::nullopt;
+  }
+}
+
+/**
+ * @brief Checks if output directory exists and prompts user to create it.
+ */
+bool prepare_environment(const ProgramConfig &config) {
+  if (!directoryExists(config.outputPath)) {
     while (true) {
-      std::cout << "Create output directory " + outputPath.string() + "/ [y,n]: ";
+      std::cout << "Create output directory " + config.outputPath.string() +
+                       "/ [y,n]: ";
       std::string input;
       std::getline(std::cin, input);
 
       if (input == "y" || input == "Y") {
-        fs::create_directory(outputPath);
-        std::cout << "Output directory created. Binary can be found at "
-                  << outputPath.string() << "/" << sourceFileName << '\n';
-        break;
-      } else if (input == "n" || input == "N") {    
-        return exitError(
-          ErrorType::PROCESS_ABORTED,
-          "Proccess aborted by user "
-        );
+        fs::create_directory(config.outputPath);
+        std::cout << "Output directory created.\n";
+        return true;
+      } else if (input == "n" || input == "N") {
+        exitError(ErrorType::PROCESS_ABORTED, "Proccess aborted by user ");
+        return false;
       } else {
         std::cout << "Invalid input. Please enter 'y' or 'n'.\n";
       }
     }
   }
+  return true;
+}
 
-  if (program.is_used("--compiler")) {
-    const std::optional<std::string> preferredCompiler = constructPreferredCompilerPath(
-      program.get<std::string>("--compiler")
-    );
+/**
+ * @brief Builds the full compilation command string.
+ */
+std::string build_compile_command(const ProgramConfig &config) {
 
-    if (!preferredCompiler.has_value()) {
-      return exitError(
-        ErrorType::INVALID_COMPILER_PATH,
-        "The '-c' flag expects a compiler and compiler version in the following format: '^(gnu|clang)-[0-9]{2}$'"
-      );
+  std::string command =
+      (config.compilerPath + " " + config.sourceFilePath.string() + " -o " +
+       (config.outputPath / config.outputFileName).string() + " ");
+
+  for (const auto &flag : config.extraCompilerFlags) {
+    command += flag + " ";
+  }
+
+  const auto includePaths = ExtractHeaderSourcePairs(config.sourceFilePath);
+  for (const auto &[hppPath, cppPath] : includePaths) {
+    if (fileExists(cppPath)) {
+      command += (cppPath.string() + " ");
+    } else {
+      throw std::ios::failure("Could not find required source file: " +
+                              cppPath.string());
     }
-    
-    compilerPath = preferredCompiler.has_value() 
-      ? preferredCompiler.value()
-      : compilerPath;
+  }
+  return command;
+}
+
+/**
+ * @brief Executes the compile command and (if successful) the run/valgrind
+ * command.
+ */
+int execute_commands(const ProgramConfig &config,
+                     const std::string &compileCommand) {
+
+  // * Run compilation
+  if (safeSystemCall(compileCommand) != 0) {
+    return exitError(ErrorType::COMPILATION_FAIL, "Compilation Failed",
+                     compileCommand);
   }
 
-  std::string command =(
-    compilerPath + " " + sourceFilePath.string() + " -o " 
-    + outputPath.string() + "/" + sourceFileName + " "
-  );
-
-  try {
-    const auto includePaths = ExtractHeaderSourcePairs(sourceFilePath);
-
-    for (const auto &[hppPath, cppPath]: includePaths) {
-      if (fileExists(hppPath)) {
-        command += (cppPath.string() + " ");
-      } else {
-        throw std::ios::failure(hppPath.string() + " could not be found.");
-      }
-    }
-  } 
-  catch (const std::exception &e) {
-    return exitError(
-      ErrorType::FILE_IO_ERROR,
-      e.what()
-    );
-  }
-
-  if (safeSystemCall(command) != 0) {
-    return exitError(
-      ErrorType::COMPILATION_FAIL,
-      "Compilation Failed",
-      command
-    );
-  }
-
-  if (program["--run"] == true || program["--runValgrind"] == true) {
+  // * Run execution (if requested)
+  if (config.run || config.runValgrind) {
     std::string runCommand{};
-    if (program["--runValgrind"] == true) {
+    if (config.runValgrind) {
       runCommand = "valgrind ";
     }
+    runCommand += (config.outputPath / config.outputFileName).string();
 
-    runCommand += outputPath.string() + "/" + sourceFileName;
     if (safeSystemCall(runCommand) != 0) {
-      return exitError(
-        ErrorType::EXECUTION_FAIL,
-        "Execution Failed",
-        runCommand
-      );
+      return exitError(ErrorType::EXECUTION_FAIL, "Execution Failed",
+                       runCommand);
     }
+  }
+
+  return true;
+}
+
+int main(int argc, char **argv) {
+
+  auto config_opt = parse_args(argc, argv);
+  if (!config_opt) {
+    return static_cast<int>(ErrorType::ARGUMENT_PARSING_ERROR);
+  }
+
+  auto config = config_opt.value();
+  if (!prepare_environment(config)) {
+    return static_cast<int>(ErrorType::PROCESS_ABORTED);
+  }
+
+  std::string compile_command;
+  try {
+    compile_command = build_compile_command(config);
+  } catch (const std::exception &e) {
+    return exitError(ErrorType::FILE_IO_ERROR, e.what());
+  }
+
+  if (!execute_commands(config, compile_command)) {
+    return 1;
   }
 
   return 0;
 }
 
-std::map<fs::path, fs::path> ExtractHeaderSourcePairs(const fs::path &sourceFilePath) {
+std::map<fs::path, fs::path>
+ExtractHeaderSourcePairs(const fs::path &sourceFilePath) {
+  // ... (Your Tier 2 refactored logic goes here)
   std::ifstream file(sourceFilePath);
   if (!file.is_open()) {
     throw std::runtime_error("Unable to open file: " + sourceFilePath.string());
   }
 
+  // * Find all available .cpp files in the project ONCE.
+  std::map<std::string, fs::path> availableSources;
+  const auto rootDir = getRootDir(); // * Uses fs::current_path()
+
+  for (const auto &entry : fs::recursive_directory_iterator(rootDir)) {
+    if (entry.is_regular_file() && entry.path().extension() == ".cpp") {
+      availableSources[entry.path().filename().string()] = entry.path();
+    }
+  }
+
   std::map<fs::path, fs::path> headerToSourceMap;
   std::smatch match;
   std::string line;
-  const auto rootDir = getRootDir(sourceFilePath);
+  const std::string mainFileName = sourceFilePath.filename().string();
 
   while (std::getline(file, line)) {
     if (std::regex_match(line, match, HEADER_REGEX)) {
       fs::path headerFile = match[1].str();
       fs::path cppFile = headerFile.replace_extension("cpp");
+      std::string cppFileName = cppFile.filename().string();
 
-      if (cppFile.filename() == sourceFilePath.filename()) {
+      if (cppFileName == mainFileName)
         continue;
-      }
 
-      for (const auto &entry : fs::recursive_directory_iterator(rootDir)) {
-        if (cppFile.filename() == entry.path().filename()) {
-          fs::path fullHeaderPath = rootDir / headerFile;
-          headerToSourceMap[fullHeaderPath.replace_extension("hpp")] = entry.path();
-          break;
-        }
+      if (availableSources.count(cppFileName)) {
+        fs::path fullHeaderPath = rootDir / headerFile;
+        headerToSourceMap[fullHeaderPath.replace_extension("hpp")] =
+            availableSources[cppFileName];
       }
     }
   }
-
   return headerToSourceMap;
 }
 
@@ -232,7 +245,8 @@ std::vector<std::string> splitString(const std::string &str, char delimiter) {
   return result;
 }
 
-int exitError(const ErrorType &errorType, const std::string &message, const std::string &source) {
+int exitError(const ErrorType &errorType, const std::string &message,
+              const std::string &source) {
   int errorCode = static_cast<int>(errorType);
   std::cerr << "\033[31merror\033[0m: fail code " << errorCode << '\n';
   std::cerr << "- " << message << '\n';
@@ -241,19 +255,19 @@ int exitError(const ErrorType &errorType, const std::string &message, const std:
   return errorCode;
 }
 
-std::optional<std::string> constructPreferredCompilerPath(const std::string &compilerName) {
+std::optional<std::string>
+constructPreferredCompilerPath(const std::string &compilerName) {
   if (!std::regex_match(compilerName, COMPILER_REGEX)) {
     return std::nullopt;
   }
 
   const auto tokens = splitString(compilerName, '-');
-  const std::string selectedCompiler = tokens[0] == "gnu"
-    ? "g++"
-    : "clang++";
+  const std::string selectedCompiler = tokens[0] == "gnu" ? "g++" : "clang++";
 
   return constructCompilerPath(selectedCompiler, tokens[1]);
 }
 
-std::string constructCompilerPath(const std::string &compilerName, const std::string &compilerVersion) {
+std::string constructCompilerPath(const std::string &compilerName,
+                                  const std::string &compilerVersion) {
   return compilerName + " -std=c++" + compilerVersion;
 }

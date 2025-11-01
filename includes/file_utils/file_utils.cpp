@@ -10,18 +10,6 @@ bool directoryExists(const std::filesystem::path &directoryPath) {
          std::filesystem::is_directory(directoryPath);
 }
 
-std::string getRootDir(const std::filesystem::path &path) {
-  std::filesystem::path rootDir{};
-  std::filesystem::path tempPath = path;
-
-  while (!tempPath.parent_path().empty()) {
-    rootDir = tempPath.parent_path();
-    tempPath = tempPath.parent_path();
-  }
-
-  if (rootDir.empty()) {
-    rootDir = "./";
-  }
-
-  return rootDir;
+std::string getRootDir() {
+  return std::filesystem::current_path().string();
 }
