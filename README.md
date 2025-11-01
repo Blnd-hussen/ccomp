@@ -1,11 +1,35 @@
 # C++ Compiler Automation Tool (ccomp)
 
-CCOMP is a command-line utility designed to automate the compilation and execution of C++ source files on Unix-like systems.  
+CCOMP is a command-line utility designed to automate the compilation and execution of C++ source files on Linux.  
 the program uses p-ranav's argparse library to parse arguments and regular expressions to find the cpp files based on the include files.
 
 > Note: The tool assumes that each header file (.hpp) follows the pattern: R"(^\s*#include\s*\"([^\"]+)\"\s*$)",  
 > meaning the program will look for a corresponding C++ file within the root directory of the project.  
 > For example, #include "header.hpp" is expected to have a matching header.cpp file.
+
+## How to? (for devs)
+
+- To install ccomp (system-wide): run the following command to add ccomp binary to /usr/local/bin. (feel free to inspect the makeFile)
+
+```bash
+sudo make install
+```
+
+- to uninstall e.g. remove it from bin, run the following command
+
+```bash
+sudo make uninstall
+```
+
+- To clean up your directory: (This removes the ccomp binary and all the .o files)
+
+```bash
+make clean
+```
+
+## How to? (for users)
+
+- Go to the Releases page, download the ccomp binary, make it executable (chmod +x ccomp), and then move it to your path (sudo mv ccomp /usr/local/bin).
 
 ## Features
 
